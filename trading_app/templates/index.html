@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trading Signal Analysis</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>Trading Signal Analysis</h1>
+    </div>
+
+    <div class="control-panel">
+        <div class="input-group">
+            <label for="ticker">Ticker Symbol:</label>
+            <input type="text" id="ticker" value="AAPL">
+        </div>
+        
+        <div class="input-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="sensitive">
+                More Sensitive Signals
+            </label>
+        </div>
+
+        <div class="input-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="useML">
+                Include AI Prediction
+                <span class="tooltip" title="Uses machine learning to predict next day's price. May take longer to process.">ⓘ</span>
+            </label>
+        </div>
+        
+        <button class="analyze-btn" onclick="analyze()">Analyze</button>
+    </div>
+
+    <div id="results">
+        <div class="loader hidden" id="loader"></div>
+        <div class="loading-text hidden" id="loading-text">Generating charts, please wait...</div>
+        
+        <div class="results-container">
+            <div id="recommendation" class="recommendation hidden"></div>
+            <div class="ml-prediction-container hidden" id="mlPrediction">
+                <div class="prediction-loader">
+                    <div class="loader-small"></div>
+                    <span>Generating AI Prediction...</span>
+                </div>
+                <div class="prediction-content hidden"></div>
+            </div>
+            <div class="returns-container" id="returns"></div>
+        </div>
+        
+        <div id="plots"></div>
+    </div>
+
+    <script>
+        // Add tooltip initialization
+        $(document).ready(function() {
+            $('[title]').tooltip();
+        });
+
+        function analyze() {
+            const ticker = $('#ticker').val();
+            const sensitive = $('#sensitive').is(':checked');
+            const useML = $('#useML').is(':checked');
+            
+            // Show loader
+            $('#loader').removeClass('hidden');
+            $('#loading-text').removeClass('hidden');
+            
+            // Clear previous results
+            $('#plots').empty();
+            $('#returns').empty();
+            $('#recommendation').addClass('hidden').empty();
+            $('#mlPrediction').addClass('hidden');
+            
+            // Make technical analysis request
+            $.ajax({
+                url: '/analyze',
+                method: 'POST',
+                data: { ticker, sensitive },
+                success: function(response) {
+                    $('#loader').addClass('hidden');
+                    $('#loading-text').addClass('hidden');
+                    
+                    if (response.success) {
+                        // Display recommendation
+                        $('#recommendation')
+                            .html(response.recommendation)
+                            .removeClass('hidden');
+                        
+                        // Display plots
+                        response.plots.forEach(plot => {
+                            const cleanPlot = plot.replace(/>\s*$/, '');
+                            $('#plots').append(`
+                                <div class="plot-container">
+                                    ${cleanPlot}
+                                </div>
+                            `);
+                        });
+                        
+                        // Display returns
+                        $('#returns').html(`
+                            <div class="returns-container">
+                                <div class="return-box">
+                                    <span class="return-label">Actual Return</span>
+                                    <span class="return-value">${response.actual_return}</span>
+                                </div>
+                                <div class="return-box">
+                                    <span class="return-label">System Return</span>
+                                    <span class="return-value">${response.system_return}</span>
+                                </div>
+                            </div>
+                        `);
+                        
+                        // Only make ML prediction if checkbox is checked
+                        if (useML) {
+                            getPrediction(ticker);
+                        }
+                        
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    $('#loader').addClass('hidden');
+                    $('#loading-text').addClass('hidden');
+                    alert('Server error occurred');
+                }
+            });
+        }
+        
+        function getPrediction(ticker) {
+            // Show ML prediction section with loader
+            $('#mlPrediction').removeClass('hidden');
+            $('.prediction-loader').removeClass('hidden');
+            $('.prediction-content').addClass('hidden');
+            
+            $.ajax({
+                url: '/predict',
+                method: 'POST',
+                data: { ticker },
+                success: function(response) {
+                    if (response.success) {
+                        const pred = response.prediction;
+                        const changeColor = pred.predicted_change >= 0 ? 'positive' : 'negative';
+                        const changeArrow = pred.predicted_change >= 0 ? '↑' : '↓';
+                        
+                        $('.prediction-loader').addClass('hidden');
+                        $('.prediction-content')
+                            .removeClass('hidden')
+                            .html(`
+                                <h3>AI Price Prediction</h3>
+                                <div class="prediction-details">
+                                    <div class="pred-item">
+                                        <span class="pred-label">Current Price</span>
+                                        <span class="pred-value">$${pred.current_price.toFixed(2)}</span>
+                                    </div>
+                                    <div class="pred-item">
+                                        <span class="pred-label">Tomorrow's Predicted Closing Price</span>
+                                        <span class="pred-value">$${pred.predicted_price.toFixed(2)}</span>
+                                    </div>
+                                    <div class="pred-item">
+                                        <span class="pred-label">Predicted Change</span>
+                                        <span class="pred-value ${changeColor}">
+                                            ${changeArrow}${Math.abs(pred.predicted_change).toFixed(2)}%
+                                        </span>
+                                    </div>
+                                </div>
+                            `);
+                    } else {
+                        $('.prediction-loader').addClass('hidden');
+                        $('.prediction-content')
+                            .removeClass('hidden')
+                            .html(`<div class="error-message">Failed to generate prediction: ${response.error}</div>`);
+                    }
+                },
+                error: function() {
+                    $('.prediction-loader').addClass('hidden');
+                    $('.prediction-content')
+                        .removeClass('hidden')
+                        .html(`<div class="error-message">Server error occurred while generating prediction</div>`);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

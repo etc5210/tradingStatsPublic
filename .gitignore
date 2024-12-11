@@ -1,0 +1,17 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# # Virtual environment
+venv/
+env/
+.env/
+
+# api keys
+api_key.key
+trading_app/api_key.key
+
+# learning folder
+learning/
